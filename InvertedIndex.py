@@ -9,7 +9,7 @@ import nltk
 from nltk.corpus import stopwords
 import sqlite3 as sql
 
-nltk.download()
+# nltk.download()
 # Optimizations
 # Lemmatization for Tokens
 # Ignore Stop Words, Symbols, and Numbers
@@ -81,7 +81,26 @@ def stem(tokens):
     if not tokens:
         return None
     stemmer = PorterStemmer()
-
+    # There is an error here.
+    # one of the tokens in  when stemming has an index out of range error
+    # when check if the word ends in double consonant
+    # why? I have no idea
+    # The full error:
+    '''
+  File "InvertedIndex.py", line 240, in <module>
+    title = get_title(soup)
+  File "InvertedIndex.py", line 85, in stem
+    return [stemmer.stem(t) for t in tokens]
+  File "C:\ProgramData\Anaconda2\lib\site-packages\nltk\stem\porter.py", line 665, in stem
+    stem = self._step1b(stem)
+  File "C:\ProgramData\Anaconda2\lib\site-packages\nltk\stem\porter.py", line 376, in _step1b
+    lambda stem: (self._measure(stem) == 1 and
+  File "C:\ProgramData\Anaconda2\lib\site-packages\nltk\stem\porter.py", line 258, in _apply_rule_list
+    if suffix == '*d' and self._ends_double_consonant(word):
+  File "C:\ProgramData\Anaconda2\lib\site-packages\nltk\stem\porter.py", line 214, in _ends_double_consonant
+    word[-1] == word[-2] and
+IndexError: string index out of range
+    '''
     return [stemmer.stem(t) for t in tokens]
 
 
@@ -106,6 +125,17 @@ def check_token(token):
     if re.search('^[\d.+\-]+$', token):
         return True
     return False
+    # Check if non ASCII by:
+    '''
+    try:
+        token.decode('ascii')
+    except UnicodeDecodeError:
+        //Not ascii, so return True
+    '''
+    # Ignore dates and times
+    # Ignore numbers (with k and m, etc.)
+    # Ignore single letters non capitalized letters
+    # Ignore ordinals like 1st, 2nd, 3rd, ...
             # if not re.search('[^\w]', t) and not re.search('^[\w\d\.+\-=?!@#$%^&*(),.\{}\[]|]+$', t) and not re.search('^[\.\*\+].*$', t) and not re.search('^\d+\-[a-z]+\-\d+$', t) and not re.search('^\d+:\d+:*\d*[a-z]{1,2}$', t):
 
 
@@ -198,6 +228,8 @@ PATH = 'C:/Users/Joe/Desktop/Spring2017/CS 121/SearchEngine/WEBPAGES_CLEAN/'
 DB_PATH = 'C:/Users/Joe/Desktop/Spring2017/CS 121/SearchEngine/Index.db'
 # nltk.download()
 # For every file in every folder
+docs = 0
+counter = 1
 for root, folder, files in os.walk(PATH):
     # For every file in one folder
     for fi in files:
@@ -209,7 +241,8 @@ for root, folder, files in os.walk(PATH):
         full_path = root + '/' + fi
         # Get the Doc ID
         docid = get_docid(full_path)
-        print 'Doc ID: ' + docid
+        print '#', counter, '; Doc ID: ', docid
+        counter += 1
         if docid is None:
             print 'Bad Doc ID for path: ', full_path
             continue
@@ -257,6 +290,7 @@ for root, folder, files in os.walk(PATH):
                 # db.text_factory = str
                 add_regular(all_tokens, docid, db)
                 add_strong(strong_tokens, docid, db)
+        docs += 1
 #  Schtuff
 # DB Format
 '''
@@ -331,4 +365,5 @@ Via os.walk - open every Folder O, File F:
         -Load the link into a list
 -Print the list
 '''
+
 
