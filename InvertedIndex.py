@@ -1,12 +1,22 @@
 # Imports
 import os  # For folder, file loop
 import re  # For regex checking of strings
+import string
 from bs4 import BeautifulSoup  # For HTML parsing
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.stem import *
+import nltk
+from nltk.corpus import stopwords
 import sqlite3 as sql
 
+nltk.download()
+# Optimizations
+# Lemmatization for Tokens
+# Ignore Stop Words, Symbols, and Numbers
+# Separates Term - Have Tersm, ID Table, and ID, Doc, Freq Table (Save a bit of space)
 
+DEBUG_QUERY = 0
+DEBUG_RES = 0
 def get_docid(path):
     # Find the first path break / (Should be in between the Folder and File)
     br = path.rfind('/')
@@ -27,123 +37,166 @@ def get_body(s):
 def get_title(s):
     # t = s.title.text if soup.title else None
     # if t:
-    #     return t.encode('utf-8')
-    t = re.search('<title>(.+?)</title>', str(s))
+    #     return t
+    t = re.search('<title>(.+?)</title>', s.encode('utf-8'))
     if t:
-        print 'regex match'
-        return t.group(1).encode('utf-8')
+        return t.group(1)
 
-    bi = str(s).find('<body>')
+    bi = s.encode('utf-8').find('<body>')
     if bi != -1:
-        print bi
-        return str(s)[:bi].encode('utf-8')
+        return s.encode('utf-8')[:bi]
     return None
 
 
 def get_headers(s):
     hs = list()
     for h in s.find_all('h1'):
-        hs.append(h)
+        hs.append(h.encode('utf-8'))
     for h in s.find_all('h2'):
-        hs.append(h)
+        hs.append(h.encode('utf-8'))
     for h in s.find_all('h3'):
-        hs.append(h)
+        hs.append(h.encode('utf-8'))
     return hs
 
 
 def get_bold(s):
     bs = list()
     for b in s.find_all('b'):
-        bs.append(b)
+        bs.append(b.encode('utf-8'))
     for b in s.find_all('strong'):
-        bs.append(b)
+        bs.append(b.encode('utf-8'))
     return bs
 
 
 def tokenize(string):
-    return word_tokenize(string)
+    if not string:
+        return None
+    # print 'string: ', string.encode('utf-8')
+    stop = stopwords.words('english')
+    return [t for t in
+            word_tokenize(string.decode('utf-8'), 'english') if t not in stop]
 
 
 def stem(tokens):
+    if not tokens:
+        return None
     stemmer = PorterStemmer()
+
     return [stemmer.stem(t) for t in tokens]
 
 
+def clean_up(tokens):
+    if not tokens or len(tokens) == 0:
+        return list()
+    cleaner = lambda x: x.strip().replace('\'', '')
+    return [cleaner(t) for t in tokens]
+
+
+def remove_unwanted(tokens):
+    new_tokens = list()
+    for t in tokens:
+        if not check_token(t):
+            new_tokens.append(t)
+    return new_tokens
+
+
+def check_token(token):
+    if re.search('[^\w]', token):
+        return True
+    if re.search('^[\d.+\-]+$', token):
+        return True
+    return False
+            # if not re.search('[^\w]', t) and not re.search('^[\w\d\.+\-=?!@#$%^&*(),.\{}\[]|]+$', t) and not re.search('^[\.\*\+].*$', t) and not re.search('^\d+\-[a-z]+\-\d+$', t) and not re.search('^\d+:\d+:*\d*[a-z]{1,2}$', t):
+
+
 def add_regular(tokens, doc_id, connector):
+    if not tokens or len(tokens) == 0:
+        return
     cursor = connector.cursor()
     br = doc_id.find('/')
+
     for t in tokens:
         # Check if the term, doc_id triple exists in the DB
-        query = 'SELECT * FROM Terms WHERE Terms.Term == ' + str(t) \
-                + ' AND Terms.Folder == ' + str(doc_id[:br]) \
-                + ' AND Terms.File == ' + str(doc_id[br + 1:])
+        query = 'SELECT * FROM Terms WHERE Term == \'' + t.encode('utf-8') \
+                + '\' AND Folder == ' + doc_id[:br] \
+                + ' AND File == ' + doc_id[br + 1:]
+        if DEBUG_QUERY: print query
         cursor.execute(query)
 
         if not cursor.fetchall():
             # Insert new entry
-            query = 'INSERT INTO Terms VALUES(' \
-                    + str(t) + ','\
-                    + str(doc_id[:br]) + ','\
-                    + str(doc_id[br + 1:]) + ','\
-                    + str(1) + ','\
-                    + str(0) + ')'
+            query = 'INSERT INTO Terms VALUES(\'' \
+                    + t.encode('utf-8') + '\','\
+                    + doc_id[:br] + ','\
+                    + doc_id[br + 1:] + ','\
+                    + '1' + ','\
+                    + '0' + ')'
+            if DEBUG_QUERY: print query
             cursor.execute(query)
         else:
             # Update new entry
-            query = 'SELECT Frequency FROM Terms WHERE Terms.Term == ' \
-                    + str(t) + ' AND Terms.Folder == ' + str(doc_id[:br]) \
-                    + ' AND Terms.File == ' + str(doc_id[br + 1:])
+            query = 'SELECT Frequency FROM Terms WHERE Term == \'' \
+                    + t.encode('utf-8') + '\' AND Folder == ' + doc_id[:br] \
+                    + ' AND File == ' + doc_id[br + 1:]
+            if DEBUG_QUERY: print query
             cursor.execute(query)
             freq = cursor.fetchone()[0] + 1
-            query = 'UPDATE Terms SET Terms.Frequency = ' + str(freq) \
-                    + ' WHERE Terms.Term == ' + str(t) \
-                    + ' AND Terms.Folder == ' + str(doc_id[:br]) \
-                    + ' AND Terms.File == ' + str(doc_id[br + 1:])
+            query = 'UPDATE Terms SET Frequency = ' + str(freq) \
+                    + ' WHERE Term == \'' + t.encode('utf-8') \
+                    + '\' AND Folder == ' + doc_id[:br] \
+                    + ' AND File == ' + doc_id[br + 1:]
+            if DEBUG_QUERY: print query
             cursor.execute(query)
     connector.commit()
 
 
 def add_strong(tokens, doc_id, connector):
+    if not tokens or len(tokens) == 0:
+        return
     cursor = connector.cursor()
     br = doc_id.find('/')
     for t in tokens:
         # Check if the term, doc_id triple exists in the DB
-        query = 'SELECT * FROM Terms WHERE Terms.Term == ' + str(t) \
-                + ' AND Terms.Folder == ' + str(doc_id[:br]) \
-                + ' AND Terms.File == ' + str(doc_id[br + 1:])
+        query = 'SELECT * FROM Terms WHERE Term == \'' + t.encode('utf-8') \
+                + '\' AND Folder == ' + doc_id[:br] \
+                + ' AND File == ' + doc_id[br + 1:]
+        if DEBUG_QUERY: print query
         cursor.execute(query)
 
         if not cursor.fetchall():
             # Insert new entry
-            query = 'INSERT INTO Terms VALUES(' \
-                    + str(t) + ','\
-                    + str(doc_id[:br]) + ','\
-                    + str(doc_id[br + 1:]) + ','\
-                    + str(1) + ','\
-                    + str(1) + ')'
+            query = 'INSERT INTO Terms VALUES(\'' \
+                    + t.encode('utf-8') + '\','\
+                    + doc_id[:br] + ','\
+                    + doc_id[br + 1:] + ','\
+                    + '1' + ','\
+                    + '1' + ')'
+            if DEBUG_QUERY: print query
             cursor.execute(query)
         else:
             # Update new entry
-            query = 'SELECT Frequency, StrongFrequency FROM Terms WHERE Terms.Term == ' \
-                    + str(t) + ' AND Terms.Folder == ' + str(doc_id[:br]) \
-                    + ' AND Terms.File == ' + str(doc_id[br + 1:])
+            query = 'SELECT Frequency, StrongFrequency FROM Terms WHERE Term == \'' \
+                    + t.encode('utf-8') + '\' AND Folder == ' + doc_id[:br] \
+                    + ' AND File == ' + doc_id[br + 1:]
+            if DEBUG_QUERY: print query
             cursor.execute(query)
             freqs = cursor.fetchone()
             freq = freqs[0] + 1
             strfreq = freqs[1] + 1
-            query = 'UPDATE Terms SET Terms.Frequency = ' + str(freq) \
-                    + ', Terms.StrongFrequency = ' + str(strfreq) \
-                    + ' WHERE Terms.Term == ' + str(t) \
-                    + ' AND Terms.Folder == ' + str(doc_id[:br]) \
-                    + ' AND Terms.File == ' + str(doc_id[br + 1:])
+            query = 'UPDATE Terms SET Frequency = ' + str(freq) \
+                    + ', StrongFrequency = ' + str(strfreq) \
+                    + ' WHERE Term == \'' + t.encode('utf-8') \
+                    + '\' AND Folder == ' + doc_id[:br] \
+                    + ' AND File == ' + doc_id[br + 1:]
+            if DEBUG_QUERY: print query
             cursor.execute(query)
     connector.commit()
 
 
 # Path to all of the files
 PATH = 'C:/Users/Joe/Desktop/Spring2017/CS 121/SearchEngine/WEBPAGES_CLEAN/'
-DB_PATH
-
+DB_PATH = 'C:/Users/Joe/Desktop/Spring2017/CS 121/SearchEngine/Index.db'
+# nltk.download()
 # For every file in every folder
 for root, folder, files in os.walk(PATH):
     # For every file in one folder
@@ -156,7 +209,7 @@ for root, folder, files in os.walk(PATH):
         full_path = root + '/' + fi
         # Get the Doc ID
         docid = get_docid(full_path)
-        # print 'Doc ID: ' + docid
+        print 'Doc ID: ' + docid
         if docid is None:
             print 'Bad Doc ID for path: ', full_path
             continue
@@ -179,15 +232,31 @@ for root, folder, files in os.walk(PATH):
 
             # Tokenize via NLTK
             title_tokens = stem(tokenize(title))
-            all_tokens = stem(tokenize(body)) + title_tokens
-            strong_tokens = title_tokens + stem(tokenize(headers)) + stem(tokenzie(bolds))
+            if not title_tokens:
+                title_tokens = list()
+            body_tokens = stem(tokenize(body))
+            if not body_tokens:
+                body_tokens = list()
+            header_tokens = stem(tokenize(headers))
+            if not header_tokens:
+                header_tokens = list()
+            bold_tokens = stem(tokenize(bolds))
+            if not bold_tokens:
+                bold_tokens = list()
 
+            all_tokens = clean_up(remove_unwanted(title_tokens + body_tokens))
+            strong_tokens = clean_up(remove_unwanted(title_tokens + header_tokens + bold_tokens))
+
+            if DEBUG_RES:
+                print 'All Tokens: ', [t for t in all_tokens]
+                print 'Strong Tokens Only: ', [s for s in strong_tokens]
+                print '################'
             # Add to DB Index
             with sql.connect(DB_PATH) as db:
+                # db.text_factory = lambda x: str(x, 'utf-8')
+                # db.text_factory = str
                 add_regular(all_tokens, docid, db)
                 add_strong(strong_tokens, docid, db)
-
-            raw_input()
 #  Schtuff
 # DB Format
 '''
