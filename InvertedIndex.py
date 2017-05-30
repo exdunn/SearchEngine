@@ -9,12 +9,14 @@ import nltk
 from nltk.corpus import stopwords
 import sqlite3 as sql
 
+# module for checking file type
+import magic
+
 # nltk.download()
 # Optimizations
 # Lemmatization for Tokens
 # Ignore Stop Words, Symbols, and Numbers
 # Separates Term - Have Tersm, ID Table, and ID, Doc, Freq Table (Save a bit of space)
-
 DEBUG_QUERY = 0
 DEBUG_RES = 0
 def get_docid(path):
@@ -125,6 +127,24 @@ def check_token(token):
     if re.search('^[\d.+\-]+$', token):
         return True
     return False
+
+# check for certain file types and return true if they are found
+def check_file_type(file_type):
+    if file_type.find("data") >= 0:
+        print "data"
+        return True
+    if file_type.find("source") >= 0:
+        print "source"
+        return True
+    if file_type.find("python") >= 0:
+        print "python"
+        return True
+    if file_type.find("C++") >= 0:
+        print "c++"
+        return True
+
+    return False
+
     # Check if non ASCII by:
     '''
     try:
@@ -137,7 +157,6 @@ def check_token(token):
     # Ignore single letters non capitalized letters
     # Ignore ordinals like 1st, 2nd, 3rd, ...
             # if not re.search('[^\w]', t) and not re.search('^[\w\d\.+\-=?!@#$%^&*(),.\{}\[]|]+$', t) and not re.search('^[\.\*\+].*$', t) and not re.search('^\d+\-[a-z]+\-\d+$', t) and not re.search('^\d+:\d+:*\d*[a-z]{1,2}$', t):
-
 
 def add_regular(tokens, doc_id, connector):
     if not tokens or len(tokens) == 0:
@@ -222,10 +241,12 @@ def add_strong(tokens, doc_id, connector):
             cursor.execute(query)
     connector.commit()
 
+# init magic
+file_magic = magic.Magic(magic_file="C:/Program Files (x86)/magic/magic.mgc")
 
 # Path to all of the files
-PATH = 'C:/Users/Joe/Desktop/Spring2017/CS 121/SearchEngine/WEBPAGES_CLEAN/'
-DB_PATH = 'C:/Users/Joe/Desktop/Spring2017/CS 121/SearchEngine/Index.db'
+PATH = 'WEBPAGES_CLEAN/'
+DB_PATH = 'Index.db'
 # nltk.download()
 # For every file in every folder
 docs = 0
@@ -237,8 +258,17 @@ for root, folder, files in os.walk(PATH):
         if fi.rfind('.json') != -1 or fi.rfind('.tsv') != -1:
             # Ignore the .json and the .tsv file
             continue
+
         # Get the full path of the file
         full_path = root + '/' + fi
+        #print full_path
+        file_type = file_magic.from_file(full_path)
+
+        if not check_file_type(file_type):
+            pass
+        else:
+            continue
+
         # Get the Doc ID
         docid = get_docid(full_path)
         print '#', counter, '; Doc ID: ', docid
