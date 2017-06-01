@@ -122,9 +122,15 @@ def remove_unwanted(tokens):
 
 
 def check_token(token):
-    if re.search('[^\w]', token):
+    if re.search('[^\w]', token): # Not alphanumeric
         return True
-    if re.search('^[\d.+\-]+$', token):
+    if re.search('^[\d.+\-x/_]+$', token):  # Only numbers and +/-/x//_
+        return True
+    if re.search('^\d+[a-z][a-z]?$', token):  # Only number followed by one or two letters (like 10am or 0th)
+        return True
+    if re.search('^0x[\da-f]+$', token):  # Only hex (0x....)
+        return True
+    if re.search('^_+$', token):
         return True
     return False
 
@@ -179,6 +185,7 @@ def add_regular(tokens, doc_id, connector):
                     + doc_id[:br] + ','\
                     + doc_id[br + 1:] + ','\
                     + '1' + ','\
+                    + '0' + ',' \
                     + '0' + ')'
             if DEBUG_QUERY: print query
             cursor.execute(query)
@@ -219,7 +226,8 @@ def add_strong(tokens, doc_id, connector):
                     + doc_id[:br] + ','\
                     + doc_id[br + 1:] + ','\
                     + '1' + ','\
-                    + '1' + ')'
+                    + '1' + ',' \
+                    + '0' + ')'
             if DEBUG_QUERY: print query
             cursor.execute(query)
         else:

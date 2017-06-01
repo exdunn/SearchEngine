@@ -6,6 +6,7 @@ from nltk.stem import *
 from nltk.corpus import stopwords
 from heapq import nsmallest
 import time
+import itertools
 path = 'Index.db'
 
 # Speed up Cos Calculations
@@ -23,7 +24,8 @@ path = 'Index.db'
 # Still need docfrequencies index tho
 class Ranker:
     STRONG_RELEVANCE = 0.3
-    IDF_THRESHOLD = 0.1
+    IDF_THRESHOLD = 0.01
+    QUERY_RELEVANCE = 0.5
     CHAMPIONS = 150
 
     def __init__(self, k, path):
@@ -31,121 +33,121 @@ class Ranker:
         self.k = k
         self.docs = self.__get_doc_number()
         self.cursor = None
-        self.starts = list()
-        self.ends = list()
+        # self.starts = list()
+        # self.ends = list()
 
-    def do_doc_freq(self):
-        with sql.connect(self.path) as db:
-            cursor = db.cursor()
-            query = 'SELECT DISTINCT Term FROM Terms'
-            cursor.execute(query)
-            terms = cursor.fetchall()
-            for t in terms:
-                if type(t[0]) is int:
-                    t = str(t[0])
-                else:
-                    t = t[0].encode('utf-8')
-                # if t == 'comput':
-                    # print 'comput found'
-                query = 'SELECT COUNT(*) FROM (SELECT DISTINCT Folder, File FROM Terms WHERE Term == \'' + t + '\')'
-                cursor.execute(query)
-                df = cursor.fetchone()
-                df = df[0] if df else 0
-
-                query = 'SELECT Term FROM DocFrequencies WHERE Term == \'' + t + '\''
-                cursor.execute(query)
-                if cursor.fetchone():
-                    # if t == 'comput':
-                    #     print 'comput found again'
-                    continue
-
-                query = 'INSERT INTO DocFrequencies VALUES (\'' + t + '\', ' + str(df) + ')'
-                cursor.execute(query)
-            db.commit()
-
-    def preload(self):
-        doc_lengths = dict()
-        with sql.connect(self.path) as db:
-            cursor = db.cursor()
-            query = 'SELECT Terms.Term, Folder, File, Frequency, StrongFrequency, DocFrequency FROM Terms, ' \
-                    'DocFrequency WHERE Terms.Term == DocFrequency.Term'
-            cursor.execute(query)
-            all = cursor.fetchall()
-            for a in all:
-                wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
-                query = 'INSERT INTO Scores VALUES (\'' + a[0].encode('utf-8') + '\', ' + str(folder) + ', ' + str(file) \
-                        + ', ' + str(wgt) + ', 0)'
-                cursor.execute(query)
-
-            query = 'SELECT DISTINCT Folder, File FROM Terms'
-            cursor.execute(query)
-            docs = cursor.fetchall()
-            for d in docs:
-                query = 'SELECT Weight FROM Scores WHERE Folder == ' + str(d[0]) + ' AND File == ' + str(d[1])
-                cursor.execute(query)
-                wgts = cursor.fetchone()
-                length = self.__calculate_query_length(wgts)
-                id = str(d[0]) + '/' + str(d[1])
-                doc_lengths[id] = length
-                # query = 'INSERT INTO Lengths VALUES (' + str(d[0]) + ', ' + str(d[1]) + ', ' + str(length) + ')'
-                # cursor.execute(query)
-
-            query = 'SELECT Terms.Term, Terms.Folder, Terms.File, Weights FROM Terms, Scores WHERE Terms.Term == ' \
-                    'Scores.Term AND Terms.Folder == Scores.Folder AND Terms.File == Scores.File'
-            cursor.execute(query)
-            wgts = cursor.fetchall()
-            for w in wgts:
-                n_wgt = self.__normalize_weight(w[3], doc_lengths[str(w[0] + '/' + str(w[1]))])
-                query = 'UPDATE Scores SET NormWeight = ' + str(n_wgt) + ' WHERE Term == \'' + w[0].encode('utf-8') +\
-                        '\' AND Folder == ' + str(w[1]) + ' File == ' + str(w[2])
-                cursor.execute(query)
-
-            db.commit()
-
-    def preload2(self):
-        with sql.connect(self.path) as db:
-            cursor = db.cursor()
-            query = 'SELECT Terms.Term, Folder, File, Frequency, StrongFrequency, DocFrequency FROM Terms, ' \
-                    'DocFrequencies WHERE Terms.Term == DocFrequencies.Term ORDER BY Folder, File'
-            cursor.execute(query)
-            all = cursor.fetchall()
-            cur = str(all[0][1]) + '/' + str(all[0][2])
-            cur_a = all[0]
-            doc_list = dict()
-            for a in all:
-                # Same file as current
-                # print cur
-                # print a[1], '/', a[2]
-                if str(a[1]) + '/' + str(a[2]) == cur:
-                    wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
-                    doc_list[a[0]] = wgt
-                # Next file AKA Current file is done
-                else:
-                    length = self.__calculate_query_length(doc_list)
-                    for t, w in doc_list.iteritems():
-                        if type(t) is int:
-                            t = str(t)
-                        else:
-                            t = t.encode('utf-8')
-                        query = 'SELECT Term FROM Scores WHERE Term == \'' + t + '\'' + ' AND Folder ' \
-                                                                                                        '== ' + str(
-                                cur_a[1]) + ' AND File == ' + str(cur_a[2])
-                        cursor.execute(query)
-                        if cursor.fetchone():
-                            continue
-
-                        nwgt = w / length if length > 0 else 0
-                        query = 'INSERT INTO Scores VALUES (\'' + t + '\', ' + \
-                                str(cur_a[1]) + ', ' + str(cur_a[2]) + ', ' + str(nwgt) + ')'
-                        cursor.execute(query)
-                    doc_list.clear()
-                    cur = str(cur_a[1]) + '/' + str(cur_a[2])
-                    cur_a = a
-                    wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
-                    doc_list[a[0]] = wgt
-            db.commit()
+    # def do_doc_freq(self):
+    #     with sql.connect(self.path) as db:
+    #         cursor = db.cursor()
+    #         query = 'SELECT DISTINCT Term FROM Terms'
+    #         cursor.execute(query)
+    #         terms = cursor.fetchall()
+    #         for t in terms:
+    #             if type(t[0]) is int:
+    #                 t = str(t[0])
+    #             else:
+    #                 t = t[0].encode('utf-8')
+    #             # if t == 'comput':
+    #                 # print 'comput found'
+    #             query = 'SELECT COUNT(*) FROM (SELECT DISTINCT Folder, File FROM Terms WHERE Term == \'' + t + '\')'
+    #             cursor.execute(query)
+    #             df = cursor.fetchone()
+    #             df = df[0] if df else 0
+    #
+    #             query = 'SELECT Term FROM DocFrequencies WHERE Term == \'' + t + '\''
+    #             cursor.execute(query)
+    #             if cursor.fetchone():
+    #                 # if t == 'comput':
+    #                 #     print 'comput found again'
+    #                 continue
+    #
+    #             query = 'INSERT INTO DocFrequencies VALUES (\'' + t + '\', ' + str(df) + ')'
+    #             cursor.execute(query)
+    #         db.commit()
+    #
+    # def preload(self):
+    #     doc_lengths = dict()
+    #     with sql.connect(self.path) as db:
+    #         cursor = db.cursor()
+    #         query = 'SELECT Terms.Term, Folder, File, Frequency, StrongFrequency, DocFrequency FROM Terms, ' \
+    #                 'DocFrequency WHERE Terms.Term == DocFrequency.Term'
+    #         cursor.execute(query)
+    #         all = cursor.fetchall()
+    #         for a in all:
+    #             wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
+    #             # query = 'INSERT INTO Scores VALUES (\'' + a[0].encode('utf-8') + '\', ' + str(folder) + ', ' + str(file) \
+    #             #         + ', ' + str(wgt) + ', 0)'
+    #             query = 'UPDATE Terms SET NormWeight = ' + str(wgt) + ' WHERE Term == \'' + a[0].encode('utf-8') + '\'' + ' AND Folder == ' + str(folder) + ' AND File == ' + str(file)
+    #             cursor.execute(query)
+    #
+    #         query = 'SELECT DISTINCT Folder, File FROM Terms'
+    #         cursor.execute(query)
+    #         docs = cursor.fetchall()
+    #         for d in docs:
+    #             query = 'SELECT Weight FROM Scores WHERE Folder == ' + str(d[0]) + ' AND File == ' + str(d[1])
+    #             cursor.execute(query)
+    #             wgts = cursor.fetchone()
+    #             length = self.__calculate_query_length(wgts)
+    #             id = str(d[0]) + '/' + str(d[1])
+    #             doc_lengths[id] = length
+    #             # query = 'INSERT INTO Lengths VALUES (' + str(d[0]) + ', ' + str(d[1]) + ', ' + str(length) + ')'
+    #             # cursor.execute(query)
+    #
+    #         query = 'SELECT Terms.Term, Terms.Folder, Terms.File, Weights FROM Terms, Scores WHERE Terms.Term == ' \
+    #                 'Scores.Term AND Terms.Folder == Scores.Folder AND Terms.File == Scores.File'
+    #         cursor.execute(query)
+    #         wgts = cursor.fetchall()
+    #         for w in wgts:
+    #             n_wgt = self.__normalize_weight(w[3], doc_lengths[str(w[0] + '/' + str(w[1]))])
+    #             query = 'UPDATE Scores SET NormWeight = ' + str(n_wgt) + ' WHERE Term == \'' + w[0].encode('utf-8') +\
+    #                     '\' AND Folder == ' + str(w[1]) + ' File == ' + str(w[2])
+    #             cursor.execute(query)
+    #
+    #         db.commit()
+    #
+    # def preload2(self):
+    #     with sql.connect(self.path) as db:
+    #         cursor = db.cursor()
+    #         query = 'SELECT Terms.Term, Folder, File, Frequency, StrongFrequency, DocFrequency FROM Terms, ' \
+    #                 'DocFrequencies WHERE Terms.Term == DocFrequencies.Term ORDER BY Folder, File'
+    #         cursor.execute(query)
+    #         all = cursor.fetchall()
+    #         cur = str(all[0][1]) + '/' + str(all[0][2])
+    #         cur_a = all[0]
+    #         doc_list = dict()
+    #         for a in all:
+    #             # Same file as current
+    #             # print cur
+    #             # print a[1], '/', a[2]
+    #             if str(a[1]) + '/' + str(a[2]) == cur:
+    #                 wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
+    #                 doc_list[a[0]] = wgt
+    #             # Next file AKA Current file is done
+    #             else:
+    #                 length = self.__calculate_query_length(doc_list)
+    #                 for t, w in doc_list.iteritems():
+    #                     t = str(t) if type(t) is int else t.encode('utf-8')
+    #                     # query = 'SELECT Term FROM Terms WHERE Term == \'' + t + '\'' + ' AND Folder ' \
+    #                     #                                                                                 '== ' + str(
+    #                             # cur_a[1]) + ' AND File == ' + str(cur_a[2])
+    #                     # cursor.execute(query)
+    #                     # if cursor.fetchone():
+    #                     #     continue
+    #
+    #                     nwgt = w / length if length > 0 else 0
+    #                     # query = 'INSERT INTO Scores VALUES (\'' + t + '\', ' + \
+    #                     #         str(cur_a[1]) + ', ' + str(cur_a[2]) + ', ' + str(nwgt) + ')'
+    #                     query = 'UPDATE Terms SET NormWeight == ' + str(nwgt) + ' WHERE Term == \'' + t + '\' AND Folder == ' + str(cur_a[1]) + ' AND File == ' + str(cur_a[2])
+    #                     cursor.execute(query)
+    #                 doc_list.clear()
+    #                 cur = str(cur_a[1]) + '/' + str(cur_a[2])
+    #                 cur_a = a
+    #                 wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
+    #                 doc_list[a[0]] = wgt
+    #         db.commit()
 
     def query(self, q):
+        start = time.clock()
         with sql.connect(self.path) as db:
             self.cursor = db.cursor()
             # print 'Start Tokenize'
@@ -159,13 +161,17 @@ class Ranker:
             # print 'End Query Weights'
             # print 'Start Relevant Docs'
             relevant_docs = self.__get_relevant_docs(tokens) # Gets a list of docs which have at least one token in
+            semi_relevant_docs = list()
+            if (relevant_docs and len(relevant_docs) < self.k) or not relevant_docs:
+                semi_relevant_docs = self.__get_relevant_docs_any(tokens)
             # print 'End Relevant Docs'
             cs_k = dict()
             # common with the query
             # print relevant_docs
-            print 'SIZE OF RELEVANT DOCS: ', len(relevant_docs)
-            print '######################Relevant Doc Loop'
-            for d in relevant_docs:
+            # print 'SIZE OF RELEVANT DOCS: ', len(relevant_docs)
+            # print '######################Relevant Doc Loop'
+            docs = relevant_docs if len(relevant_docs) >= self.k else semi_relevant_docs
+            for d in docs:
                 # print 'Start Weights'
                 wgts = self.__get_weights(d[0], d[1]) # Gets the weights(a column) for that doc
                 # print 'End Weights'
@@ -174,12 +180,12 @@ class Ranker:
                 # print 'End CS'
                 # search for the t in d and multiply their weights. If not found, then 0. Finally, sum all products)
                 cs_k[d] = cs
-            print '####################End Relevant Doc Loop'
+            # print '####################End Relevant Doc Loop'
             # print 'Start Select'
             cs_k = self.__select_k(cs_k, self.k)
             # print 'End Select'
-
-        return cs_k
+        end = time.clock()
+        return cs_k, len(relevant_docs), len(semi_relevant_docs), end - start
 
     def __get_doc_number(self):
         with sql.connect(self.path) as db:
@@ -213,6 +219,35 @@ class Ranker:
         return scores
 
     def __get_relevant_docs(self, tokens):
+        # print len(tokens)
+        num_matches = max(int(len(tokens) * self.QUERY_RELEVANCE), 1)
+        combs = itertools.combinations(tokens, num_matches)
+        # print num_matches
+        # for c in combs:
+            # print c
+
+        query = 'SELECT DISTINCT Folder, File FROM Terms WHERE '
+        first = True
+        for c in combs:
+            if first:
+                first = False
+                query += '('
+            else:
+                query += ' OR ('
+            inner_first = True
+            for t in c:
+                if inner_first:
+                    inner_first = False
+                else:
+                    query += ' AND '
+                query += 'Term == \'' + t.encode('utf-8') + '\''
+            query += ')'
+        # print query
+        self.cursor.execute(query)
+        res = self.cursor.fetchall()
+        return res if res else list()
+
+    def __get_relevant_docs_any(self, tokens):
         query = 'SELECT DISTINCT Folder, File FROM Terms WHERE Term == \'' + tokens[0].encode('utf-8') + '\''
         for t in tokens[1:]:
             query += ' OR Term == \'' + t.encode('utf-8') + '\''
@@ -221,14 +256,14 @@ class Ranker:
         return res if res else list()
 
     def __get_weights(self, folder, file):
-        self.starts.append(time.clock())
-        query = 'SELECT Term, NormWeight FROM Scores WHERE Folder == ' + str(folder) + ' AND File == ' + str(file)
+        # self.starts.append(time.clock())
+        query = 'SELECT Term, NormWeight FROM Terms WHERE Folder == ' + str(folder) + ' AND File == ' + str(file)
         self.cursor.execute(query)
         res = self.cursor.fetchall()
         if not res:
             return dict()
         wgts = dict()
-        self.ends.append(time.clock())
+        # self.ends.append(time.clock())
         for r in res:
             wgts[r[0]] = r[1]
 
@@ -255,7 +290,8 @@ class Ranker:
         self.cursor.execute(query)
         res = self.cursor.fetchone()
         if not res:
-            print term.encode('utf-8'), ' does not exist in DocFrequencies.'
+            pass
+            # print term.encode('utf-8'), ' does not exist in DocFrequencies.'
         return res[0] if res else 0
 
     def __calculate_tf_idf_weight(self, tf, sf, df, n):
@@ -272,9 +308,3 @@ class Ranker:
         return wgt / length if length > 0 else 0
 
 
-
-# r = Ranker(10, path)
-# # r.do_doc_freq()
-# # r.preload2()
-# query = raw_input(':')
-# print r.query(query)
