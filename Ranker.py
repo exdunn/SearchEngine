@@ -33,157 +33,29 @@ class Ranker:
         self.k = k
         self.docs = self.__get_doc_number()
         self.cursor = None
-        # self.starts = list()
-        # self.ends = list()
-
-    # def do_doc_freq(self):
-    #     with sql.connect(self.path) as db:
-    #         cursor = db.cursor()
-    #         query = 'SELECT DISTINCT Term FROM Terms'
-    #         cursor.execute(query)
-    #         terms = cursor.fetchall()
-    #         for t in terms:
-    #             if type(t[0]) is int:
-    #                 t = str(t[0])
-    #             else:
-    #                 t = t[0].encode('utf-8')
-    #             # if t == 'comput':
-    #                 # print 'comput found'
-    #             query = 'SELECT COUNT(*) FROM (SELECT DISTINCT Folder, File FROM Terms WHERE Term == \'' + t + '\')'
-    #             cursor.execute(query)
-    #             df = cursor.fetchone()
-    #             df = df[0] if df else 0
-    #
-    #             query = 'SELECT Term FROM DocFrequencies WHERE Term == \'' + t + '\''
-    #             cursor.execute(query)
-    #             if cursor.fetchone():
-    #                 # if t == 'comput':
-    #                 #     print 'comput found again'
-    #                 continue
-    #
-    #             query = 'INSERT INTO DocFrequencies VALUES (\'' + t + '\', ' + str(df) + ')'
-    #             cursor.execute(query)
-    #         db.commit()
-    #
-    # def preload(self):
-    #     doc_lengths = dict()
-    #     with sql.connect(self.path) as db:
-    #         cursor = db.cursor()
-    #         query = 'SELECT Terms.Term, Folder, File, Frequency, StrongFrequency, DocFrequency FROM Terms, ' \
-    #                 'DocFrequency WHERE Terms.Term == DocFrequency.Term'
-    #         cursor.execute(query)
-    #         all = cursor.fetchall()
-    #         for a in all:
-    #             wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
-    #             # query = 'INSERT INTO Scores VALUES (\'' + a[0].encode('utf-8') + '\', ' + str(folder) + ', ' + str(file) \
-    #             #         + ', ' + str(wgt) + ', 0)'
-    #             query = 'UPDATE Terms SET NormWeight = ' + str(wgt) + ' WHERE Term == \'' + a[0].encode('utf-8') + '\'' + ' AND Folder == ' + str(folder) + ' AND File == ' + str(file)
-    #             cursor.execute(query)
-    #
-    #         query = 'SELECT DISTINCT Folder, File FROM Terms'
-    #         cursor.execute(query)
-    #         docs = cursor.fetchall()
-    #         for d in docs:
-    #             query = 'SELECT Weight FROM Scores WHERE Folder == ' + str(d[0]) + ' AND File == ' + str(d[1])
-    #             cursor.execute(query)
-    #             wgts = cursor.fetchone()
-    #             length = self.__calculate_query_length(wgts)
-    #             id = str(d[0]) + '/' + str(d[1])
-    #             doc_lengths[id] = length
-    #             # query = 'INSERT INTO Lengths VALUES (' + str(d[0]) + ', ' + str(d[1]) + ', ' + str(length) + ')'
-    #             # cursor.execute(query)
-    #
-    #         query = 'SELECT Terms.Term, Terms.Folder, Terms.File, Weights FROM Terms, Scores WHERE Terms.Term == ' \
-    #                 'Scores.Term AND Terms.Folder == Scores.Folder AND Terms.File == Scores.File'
-    #         cursor.execute(query)
-    #         wgts = cursor.fetchall()
-    #         for w in wgts:
-    #             n_wgt = self.__normalize_weight(w[3], doc_lengths[str(w[0] + '/' + str(w[1]))])
-    #             query = 'UPDATE Scores SET NormWeight = ' + str(n_wgt) + ' WHERE Term == \'' + w[0].encode('utf-8') +\
-    #                     '\' AND Folder == ' + str(w[1]) + ' File == ' + str(w[2])
-    #             cursor.execute(query)
-    #
-    #         db.commit()
-    #
-    # def preload2(self):
-    #     with sql.connect(self.path) as db:
-    #         cursor = db.cursor()
-    #         query = 'SELECT Terms.Term, Folder, File, Frequency, StrongFrequency, DocFrequency FROM Terms, ' \
-    #                 'DocFrequencies WHERE Terms.Term == DocFrequencies.Term ORDER BY Folder, File'
-    #         cursor.execute(query)
-    #         all = cursor.fetchall()
-    #         cur = str(all[0][1]) + '/' + str(all[0][2])
-    #         cur_a = all[0]
-    #         doc_list = dict()
-    #         for a in all:
-    #             # Same file as current
-    #             # print cur
-    #             # print a[1], '/', a[2]
-    #             if str(a[1]) + '/' + str(a[2]) == cur:
-    #                 wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
-    #                 doc_list[a[0]] = wgt
-    #             # Next file AKA Current file is done
-    #             else:
-    #                 length = self.__calculate_query_length(doc_list)
-    #                 for t, w in doc_list.iteritems():
-    #                     t = str(t) if type(t) is int else t.encode('utf-8')
-    #                     # query = 'SELECT Term FROM Terms WHERE Term == \'' + t + '\'' + ' AND Folder ' \
-    #                     #                                                                                 '== ' + str(
-    #                             # cur_a[1]) + ' AND File == ' + str(cur_a[2])
-    #                     # cursor.execute(query)
-    #                     # if cursor.fetchone():
-    #                     #     continue
-    #
-    #                     nwgt = w / length if length > 0 else 0
-    #                     # query = 'INSERT INTO Scores VALUES (\'' + t + '\', ' + \
-    #                     #         str(cur_a[1]) + ', ' + str(cur_a[2]) + ', ' + str(nwgt) + ')'
-    #                     query = 'UPDATE Terms SET NormWeight == ' + str(nwgt) + ' WHERE Term == \'' + t + '\' AND Folder == ' + str(cur_a[1]) + ' AND File == ' + str(cur_a[2])
-    #                     cursor.execute(query)
-    #                 doc_list.clear()
-    #                 cur = str(cur_a[1]) + '/' + str(cur_a[2])
-    #                 cur_a = a
-    #                 wgt = self.__calculate_tf_idf_weight(a[3], a[4], a[5], self.docs)
-    #                 doc_list[a[0]] = wgt
-    #         db.commit()
 
     def query(self, q):
         start = time.clock()
         with sql.connect(self.path) as db:
             self.cursor = db.cursor()
-            # print 'Start Tokenize'
             tokens = self.__tokenize_query(q)
-            # print 'End Tokenize'
             if not tokens or len(tokens) == 0:
                 print 'No input (No significant input)'
                 return list()
-            # print 'Start Query Weights'
             query_wgts = self.__calculate_query_weights(tokens)  # Calculates the weights for the query
-            # print 'End Query Weights'
-            # print 'Start Relevant Docs'
             relevant_docs = self.__get_relevant_docs(tokens) # Gets a list of docs which have at least one token in
             semi_relevant_docs = list()
             if (relevant_docs and len(relevant_docs) < self.k) or not relevant_docs:
                 semi_relevant_docs = self.__get_relevant_docs_any(tokens)
-            # print 'End Relevant Docs'
             cs_k = dict()
             # common with the query
-            # print relevant_docs
-            # print 'SIZE OF RELEVANT DOCS: ', len(relevant_docs)
-            # print '######################Relevant Doc Loop'
             docs = relevant_docs if len(relevant_docs) >= self.k else semi_relevant_docs
             for d in docs:
-                # print 'Start Weights'
                 wgts = self.__get_weights(d[0], d[1]) # Gets the weights(a column) for that doc
-                # print 'End Weights'
-                # print 'Start CS'
                 cs = self.__get_cos_score(query_wgts, wgts)  # Calculates the dot product of q and d (For every t in q,
-                # print 'End CS'
                 # search for the t in d and multiply their weights. If not found, then 0. Finally, sum all products)
                 cs_k[d] = cs
-            # print '####################End Relevant Doc Loop'
-            # print 'Start Select'
             cs_k = self.__select_k(cs_k, self.k)
-            # print 'End Select'
         end = time.clock()
         return cs_k, len(relevant_docs), len(semi_relevant_docs), end - start
 

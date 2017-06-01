@@ -70,7 +70,7 @@ class Preloader:
         return res[0] if res else 0
 
     def __calculate_tf_idf_weight(self, tf, sf, df, n):
-        true_tf = tf + (self.STRONG_RELEVANCE * sf)
+        true_tf = tf + (self.STRONG_RELEVANCE * (float(sf) / tf))
         return 1.0 + (math.log10(true_tf) * math.log10(n / (1.0 + df)))
 
     def __calculate_query_length(self, scores):
