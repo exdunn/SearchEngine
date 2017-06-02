@@ -36,18 +36,19 @@ class Ranker:
 
     def query(self, q):
         start = time.clock()
+        cs_k = dict()
         with sql.connect(self.path) as db:
             self.cursor = db.cursor()
             tokens = self.__tokenize_query(q)
             if not tokens or len(tokens) == 0:
                 print 'No input (No significant input)'
-                return list()
+                return dict(), 0, 0, 0
             query_wgts = self.__calculate_query_weights(tokens)  # Calculates the weights for the query
             relevant_docs = self.__get_relevant_docs(tokens) # Gets a list of docs which have at least one token in
             semi_relevant_docs = list()
             if (relevant_docs and len(relevant_docs) < self.k) or not relevant_docs:
                 semi_relevant_docs = self.__get_relevant_docs_any(tokens)
-            cs_k = dict()
+                relevant_docs = list()
             # common with the query
             docs = relevant_docs if len(relevant_docs) >= self.k else semi_relevant_docs
             for d in docs:
@@ -70,6 +71,8 @@ class Ranker:
     def __tokenize_query(self, q):
         stop = stopwords.words('english')
         tokens = [t for t in word_tokenize(q.decode('utf-8'), 'english') if t not in stop]
+        cleaner = lambda x: x.strip().replace('\'', '')
+        tokens = [cleaner(t) for t in tokens]
         stemmer = PorterStemmer()
         return [stemmer.stem(t) for t in tokens]
 
