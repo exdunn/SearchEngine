@@ -250,7 +250,7 @@ def add_strong(tokens, doc_id, connector):
     connector.commit()
 
 # init magic
-file_magic = magic.Magic(magic_file="C:/Program Files (x86)/magic/magic.mgc")
+file_magic = magic.Magic(magic_file="lib/magic.mgc")
 
 # Path to all of the files
 PATH = 'WEBPAGES_CLEAN/'
